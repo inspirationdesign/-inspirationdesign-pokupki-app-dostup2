@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, BigInteger, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, BigInteger, ForeignKey, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from database import Base
 import uuid
@@ -22,6 +22,7 @@ class User(Base):
     username = Column(String, nullable=True)
     photo_url = Column(String, nullable=True)
     family_id = Column(Integer, ForeignKey("families.id"))
+    last_seen = Column(DateTime, nullable=True)
 
     family = relationship("Family", back_populates="users")
 

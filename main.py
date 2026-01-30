@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +59,8 @@ async def startup():
 async def auth_user(user_data: UserAuth, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.telegram_id == user_data.id))
     user = result.scalar_one_or_none()
+    
+    current_time = datetime.utcnow()
 
     if not user:
         # Create new family for new user
@@ -70,33 +73,66 @@ async def auth_user(user_data: UserAuth, db: AsyncSession = Depends(get_db)):
             telegram_id=user_data.id,
             username=user_data.username,
             photo_url=user_data.photo_url,
-            family_id=new_family.id
+            family_id=new_family.id,
+            last_seen=current_time
         )
         db.add(user)
         await db.commit()
     else:
         # Update user info if changed
-        if user.username != user_data.username or user.photo_url != user_data.photo_url:
+        if user.username != user_data.username:
             user.username = user_data.username
+        if user.photo_url != user_data.photo_url:
             user.photo_url = user_data.photo_url
-            await db.commit()
-
-    # Get family members
-    result = await db.execute(select(User).where(User.family_id == user.family_id))
-    members = result.scalars().all()
+        
+        # Update last_seen
+        user.last_seen = current_time
+        await db.commit()
     
-    # Get family invite code
-    family_result = await db.execute(select(Family).where(Family.id == user.family_id))
-    family = family_result.scalar_one()
-
+    # Reload user with family
+    result = await db.execute(select(User).where(User.telegram_id == user_data.id).options(selectinload(User.family)))
+    user = result.scalar_one()
+    
     return {
-        "user": user,
-        "family": {
-            "id": family.id,
-            "invite_code": family.invite_code,
-            "members": members
-        }
+        "status": "ok", 
+        "user": user, 
+        "family": user.family
     }
+
+@app.get("/api/admin/stats")
+async def admin_stats(admin_user_id: int, db: AsyncSession = Depends(get_db)):
+    # Simple security check - only allow the specific admin user
+    # Ideally should be an environment variable or DB role, but hardcoding as requested
+    # @v_chernyshov ID would be needed here, or check username
+    
+    # Check if requester is admin
+    result = await db.execute(select(User).where(User.telegram_id == admin_user_id))
+    requester = result.scalar_one_or_none()
+    
+    if not requester or requester.username != "v_chernyshov":
+         raise HTTPException(status_code=403, detail="Access denied")
+
+    # Fetch all users
+    result = await db.execute(select(User).options(selectinload(User.family)))
+    users = result.scalars().all()
+    
+    stats = []
+    for u in users:
+        is_online = False
+        if u.last_seen:
+             # Consider online if seen in last 5 minutes
+             is_online = (datetime.utcnow() - u.last_seen).total_seconds() < 300
+             
+        stats.append({
+            "id": u.telegram_id,
+            "username": u.username,
+            "first_name": "Unknown", # We assume frontend passes names or we store them. Model only has username.
+            "last_seen": u.last_seen,
+            "is_online": is_online,
+            "family_id": u.family_id
+        })
+        
+    return stats
 
 @app.post("/api/join")
 async def join_family(join_req: JoinRequest, db: AsyncSession = Depends(get_db)):

@@ -147,6 +147,31 @@ const App: React.FC = () => {
   const [tgUser, setTgUser] = useState<TelegramUser | null>(null);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+
+  // ADMIN STATE
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [adminStats, setAdminStats] = useState<any[]>([]);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+
+  const fetchAdminStats = async () => {
+    if (!tgUser) return;
+    setIsAdminLoading(true);
+    try {
+      const response = await fetch(`/api/admin/stats?admin_user_id=${tgUser.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setAdminStats(data);
+        setIsAdminModalOpen(true);
+      } else {
+        showToast("Доступ запрещен", true);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Ошибка сети", true);
+    } finally {
+      setIsAdminLoading(false);
+    }
+  };
   const [isFamilyLoading, setIsFamilyLoading] = useState(false);
 
   // Modals
@@ -789,10 +814,10 @@ const App: React.FC = () => {
   const inviteUser = () => {
     if (inviteCode) {
       const botUsername = "pokupkigross_bot";
-      const link = `https://t.me/${botUsername}?startapp=invite_${inviteCode}`;
-      const tg = (window as any).Telegram?.WebApp;
-      if (tg) {
-        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Присоединяйся к моему списку покупок!`);
+      // FIX: Use /start?startapp= format so it works everywhere
+      const link = `https://t.me/${botUsername}/start?startapp=invite_${inviteCode}`;
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.openTelegramLink(link);
       } else {
         window.open(link, '_blank');
       }
@@ -1746,6 +1771,51 @@ const App: React.FC = () => {
               </div>
             </div>
             <button onClick={() => setIsSettingsOpen(false)} className="w-full h-14 mt-6 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-lg hover:opacity-90 transition-opacity flex-shrink-0">Закрыть настройки</button>
+            <div className="text-center mt-4">
+              <span
+                onClick={() => {
+                  if (tgUser?.username === 'v_chernyshov') {
+                    fetchAdminStats();
+                  }
+                }}
+                className="text-[9px] font-black uppercase tracking-widest text-slate-300 dark:text-slate-700 cursor-default hover:text-slate-400 dark:hover:text-slate-600 transition-colors"
+              >
+                Версия 2.0
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN MODAL */}
+      {isAdminModalOpen && (
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+          <div className="bg-white dark:bg-slate-900 w-full max-sm rounded-[32px] pt-5 px-6 pb-6 shadow-2xl flex flex-col h-[85vh] animate-bounce-short">
+            <ModalHeader title="Admin Panel" onClose={() => setIsAdminModalOpen(false)} />
+            <div className="flex-1 overflow-y-auto pr-1 scrollbar-hide space-y-2">
+              <div className="flex justify-between px-2 mb-2">
+                <span className="text-[10px] font-black uppercase text-slate-400">User</span>
+                <span className="text-[10px] font-black uppercase text-slate-400">Status</span>
+              </div>
+              {adminStats.map((user) => (
+                <div key={user.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      {/* Placeholder avatar or user photo if valid/available via proxy */}
+                      <div className="w-full h-full flex items-center justify-center text-xs font-bold">{user.username?.[0]?.toUpperCase() || '?'}</div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">{user.username || user.first_name || 'Unknown'}</p>
+                      <p className="text-[9px] opacity-40">Family: {user.family_id}</p>
+                    </div>
+                  </div>
+                  <div className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${user.is_online ? 'bg-green-500/10 text-green-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'}`}>
+                    {user.is_online ? 'Online' : 'Offline'}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setIsAdminModalOpen(false)} className="w-full mt-6 h-14 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-lg hover:opacity-90 transition-opacity flex-shrink-0">Закрыть</button>
           </div>
         </div>
       )}
