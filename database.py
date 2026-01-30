@@ -17,6 +17,16 @@ if DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     print(f"DEBUG: Connection URL starts with: {DATABASE_URL.split('://')[0]}://...")
+    try:
+        from urllib.parse import urlparse
+        # Parsing with a dummy scheme to ensure username/password extraction works even if sqlalchemy differs
+        parsed = urlparse(DATABASE_URL)
+        print(f"DEBUG: DETECTED HOSTNAME: '{parsed.hostname}'")
+        print(f"DEBUG: DETECTED PORT: '{parsed.port}'")
+        if parsed.hostname and ('@' in parsed.username if parsed.username else False):
+             print("WARNING: Username contains '@'. This might be fine.")
+    except Exception as e:
+        print(f"DEBUG: Could not parse URL for debugging: {e}")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 
